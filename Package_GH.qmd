@@ -1,0 +1,125 @@
+---
+title: "Package_Github"
+format: html
+editor: visual
+---
+
+## Learning by doing! 14th March 2025.
+
+Re-running the code on the GH page for the package rmweather. I want to understand the procedure for normalising meteorological trends that affect air-pollution. This "de-wetahered" data will allow better signal to evaluate the effectivenss of pollution reduction policies.
+
+### Load packages
+
+```{r eval=TRUE, warning=FALSE, output=FALSE}
+
+library("rmweather")
+library(tidyverse)
+library(ggthemes)
+library(ranger)
+```
+
+### London Data
+
+```{r eval=TRUE, warning=FALSE, output=FALSE, echo=FALSE}
+
+str(data_london)
+
+```
+
+```{r}
+head(data_london)
+
+```
+
+### Prepare data for modeling
+
+-   Only use data with valid wind-speed, no2 will become the dependent variable
+
+```{r}
+
+data_london_prepared <- data_london |>
+  filter(variable == "no2",
+         !is.na(ws)) |>
+  rmw_prepare_data(na.rm=TRUE)
+
+```
+
+### Train the RF model & create a metereological normalised trend
+
+```{r}
+
+list_normalised <- rmw_do_all(data_london_prepared,
+                              variables = c("date_unix", "day_julian", 
+                                            "weekday", "air_temp", "rh", 
+                                            "wd", "ws","atmospheric_pressure"),
+                              n_trees = 300,
+                              n_samples = 300,
+                              verbose = TRUE)
+```
+
+### What units are in the list?
+
+```{r}
+ names(list_normalised)
+```
+
+### Check model object's performance
+
+```{r}
+rmw_model_statistics(list_normalised$model)
+```
+
+### Plot VIP
+
+```{r}
+
+list_normalised$model %>% 
+  rmw_model_importance() %>% 
+  rmw_plot_importance()
+
+```
+
+### Check for overfitting
+
+```{r}
+
+rmw_predict_the_test_set(
+  model = list_normalised$model,
+  df = list_normalised$observations
+) |>
+  rmw_plot_test_prediction()
+```
+
+### How long did the process take?
+
+```{r}
+
+list_normalised$elapsed_times
+```
+
+### Plot normalised trend
+
+```{r}
+
+rmw_plot_normalised(list_normalised$normalised)
+```
+
+### Investigate partial dependencies, if variable is NA, predict all
+
+```{r}
+
+data_pd <- rmw_partial_dependencies(
+  model = list_normalised$model, 
+  df = list_normalised$observations,
+  variable = NA
+)
+```
+
+### Plot partial-dependencies
+
+```{r}
+
+data_pd %>% 
+  filter(variable != "date_unix") %>% 
+  rmw_plot_partial_dependencies()
+```
